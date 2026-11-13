@@ -1,0 +1,15 @@
+{
+  "cSpell.words": [
+    "labelledby",
+    "Pressability",
+    "Pressable",
+    "redent",
+    "RNTL",
+    "Uncapitalize",
+    "valuenow",
+    "valuetext"
+  ],
+  "search.exclude": {
+    "refs/**": true
+  }
+}

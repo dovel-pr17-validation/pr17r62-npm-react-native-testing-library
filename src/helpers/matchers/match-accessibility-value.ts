@@ -1,0 +1,25 @@
+import type { TestInstance } from 'test-renderer';
+
+import type { TextMatch } from '../../matches';
+import { computeAriaValue } from '../accessibility';
+import { matchStringProp } from './match-string-prop';
+
+export interface AccessibilityValueMatcher {
+  min?: number;
+  max?: number;
+  now?: number;
+  text?: TextMatch;
+}
+
+export function matchAccessibilityValue(
+  instance: TestInstance,
+  matcher: AccessibilityValueMatcher,
+): boolean {
+  const value = computeAriaValue(instance);
+  return (
+    (matcher.min === undefined || matcher.min === value?.min) &&
+    (matcher.max === undefined || matcher.max === value?.max) &&
+    (matcher.now === undefined || matcher.now === value?.now) &&
+    (matcher.text === undefined || matchStringProp(value?.text, matcher.text))
+  );
+}

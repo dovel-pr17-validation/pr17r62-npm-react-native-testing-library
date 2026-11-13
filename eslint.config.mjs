@@ -1,0 +1,69 @@
+import callstackConfig from '@callstack/eslint-config/react-native.flat.js';
+import { fixupPluginRules } from '@eslint/compat';
+import pluginJest from 'eslint-plugin-jest';
+import tseslint from 'typescript-eslint';
+
+const additionalTestBlockFunctions = ['testGateReact19_2'];
+
+const patchedCallstackConfig = callstackConfig.map((configItem) => {
+  if (!configItem.plugins?.react) {
+    return configItem;
+  }
+
+  return {
+    ...configItem,
+    plugins: {
+      ...configItem.plugins,
+      react: fixupPluginRules(configItem.plugins.react),
+    },
+  };
+});
+
+export default [
+  {
+    ignores: [
+      'dist/',
+      'refs/',
+      'experiments-rtl/',
+      'website/',
+      'eslint.config.mjs',
+      'jest-setup.ts',
+    ],
+  },
+  ...patchedCallstackConfig,
+  ...tseslint.configs.strict,
+  {
+    rules: {
+      'no-console': 'error',
+      'import/order': 'off',
+      'prettier/prettier': 'off',
+      '@typescript-eslint/consistent-type-imports': 'error',
+    },
+  },
+  {
+    files: ['src/__tests__/react-19_2/**/*.{ts,tsx}'],
+    languageOptions: {
+      parserOptions: {
+        project: './tsconfig.react-19_2.json',
+      },
+    },
+  },
+  {
+    files: ['**/*.test.{ts,tsx}', 'src/test-utils/**'],
+    plugins: {
+      jest: pluginJest,
+    },
+    rules: {
+      'react/no-multi-comp': 'off',
+      'react-native/no-color-literals': 'off',
+      'react-native/no-inline-styles': 'off',
+      'react-native/no-raw-text': 'off',
+      'react-native-a11y/has-valid-accessibility-descriptors': 'off',
+      'react-native-a11y/has-valid-accessibility-ignores-invert-colors': 'off',
+      'react-native-a11y/has-valid-accessibility-value': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      'jest/expect-expect': ['error', { additionalTestBlockFunctions }],
+      'jest/no-standalone-expect': ['error', { additionalTestBlockFunctions }],
+    },
+  },
+];

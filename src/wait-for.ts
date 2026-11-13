@@ -1,0 +1,228 @@
+/* globals jest */
+import { act } from './act';
+import { addToCleanupQueue, removeFromCleanupQueue } from './cleanup';
+import { getConfig } from './config';
+import { flushMicroTasks } from './flush-micro-tasks';
+import { copyStackTraceIfNeeded, ErrorWithStack } from './helpers/errors';
+import {
+  clearTimeout,
+  getJestFakeTimersType,
+  jestFakeTimersAreEnabled,
+  setTimeout,
+} from './helpers/timers';
+import { wrapAsync } from './helpers/wrap-async';
+
+const DEFAULT_INTERVAL = 50;
+
+export type WaitForOptions = {
+  timeout?: number;
+  interval?: number;
+  stackTraceError?: ErrorWithStack;
+  onTimeout?: (error: Error) => Error;
+};
+
+function waitForInternal<T>(
+  expectation: () => T,
+  {
+    timeout = getConfig().asyncUtilTimeout,
+    interval = DEFAULT_INTERVAL,
+    stackTraceError,
+    onTimeout,
+  }: WaitForOptions,
+): Promise<T> {
+  if (typeof expectation !== 'function') {
+    throw new TypeError('Received `expectation` arg must be a function');
+  }
+
+  // eslint-disable-next-line no-async-promise-executor
+  return new Promise(async (resolve, reject) => {
+    let lastError: unknown;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let finished = false;
+    let promiseStatus = 'idle';
+
+    let overallTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+    const cleanupQueueCallback = () => finalizeWaitFor({ rejectOnAbort: true });
+
+    const fakeTimersType = getJestFakeTimersType();
+
+    if (fakeTimersType) {
+      checkExpectation();
+      // this is a dangerous rule to disable because it could lead to an
+      // infinite loop. However, eslint isn't smart enough to know that we're
+      // setting finished inside `onDone` which will be called when we're done
+      // waiting or when we've timed out.
+      let fakeTimeRemaining = timeout;
+      while (!finished) {
+        if (!jestFakeTimersAreEnabled()) {
+          const error = new Error(
+            `Changed from using fake timers to real timers while using waitFor. This is not allowed and will result in very strange behavior. Please ensure you're awaiting all async things your test is doing before changing to real timers. For more info, please go to https://github.com/testing-library/dom-testing-library/issues/830`,
+          );
+          copyStackTraceIfNeeded(error, stackTraceError);
+          reject(error);
+          return;
+        }
+
+        // when fake timers are used we want to simulate the interval time passing
+        if (fakeTimeRemaining <= 0) {
+          handleTimeout();
+          return;
+        } else {
+          fakeTimeRemaining -= interval;
+        }
+
+        // we *could* (maybe should?) use `advanceTimersToNextTimer` but it's
+        // possible that could make this loop go on forever if someone is using
+        // third party code that's setting up recursive timers so rapidly that
+        // the user's timer's don't get a chance to resolve. So we'll advance
+        // by an interval instead. (We have a test for this case).
+        await act(() =>
+          fakeTimersType === 'modern'
+            ? jest.advanceTimersByTimeAsync(interval)
+            : jest.advanceTimersByTime(interval),
+        );
+
+        // It's really important that checkExpectation is run *before* we flush
+        // in-flight promises. To be honest, I'm not sure why, and I can't quite
+        // think of a way to reproduce the problem in a test, but I spent
+        // an entire day banging my head against a wall on this.
+        checkExpectation();
+
+        // In this rare case, we *need* to wait for in-flight promises
+        // to resolve before continuing. We don't need to take advantage
+        // of parallelization so we're fine.
+        // https://stackoverflow.com/a/59243586/971592
+        await flushMicroTasks();
+      }
+    } else {
+      overallTimeoutTimer = setTimeout(handleTimeout, timeout);
+      intervalId = setInterval(checkRealTimersCallback, interval);
+      addToCleanupQueue(cleanupQueueCallback);
+      checkExpectation();
+    }
+
+    function finalizeWaitFor({ rejectOnAbort = false } = {}) {
+      /* istanbul ignore next */
+      if (finished) {
+        return;
+      }
+
+      finished = true;
+
+      removeFromCleanupQueue(cleanupQueueCallback);
+
+      if (rejectOnAbort) {
+        reject(new Error('waitFor was aborted by cleanup'));
+      }
+
+      if (overallTimeoutTimer) {
+        clearTimeout(overallTimeoutTimer);
+        overallTimeoutTimer = null;
+      }
+
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    }
+
+    function onDone(done: { type: 'result'; result: T } | { type: 'error'; error: unknown }) {
+      if (finished) {
+        return;
+      }
+
+      finalizeWaitFor();
+
+      if (done.type === 'error') {
+        reject(done.error);
+      } else {
+        resolve(done.result);
+      }
+    }
+
+    function checkRealTimersCallback() {
+      if (jestFakeTimersAreEnabled()) {
+        const error = new Error(
+          `Changed from using real timers to fake timers while using waitFor. This is not allowed and will result in very strange behavior. Please ensure you're awaiting all async things your test is doing before changing to fake timers. For more info, please go to https://github.com/testing-library/dom-testing-library/issues/830`,
+        );
+        copyStackTraceIfNeeded(error, stackTraceError);
+        return onDone({ type: 'error', error });
+      } else {
+        return checkExpectation();
+      }
+    }
+
+    function checkExpectation() {
+      /* istanbul ignore next */
+      if (promiseStatus === 'pending') {
+        return;
+      }
+
+      try {
+        const result = expectation();
+
+        // @ts-expect-error result can be a promise
+        if (typeof result?.then === 'function') {
+          const promiseResult: Promise<T> = result as unknown as Promise<T>;
+          promiseStatus = 'pending';
+          // eslint-disable-next-line promise/catch-or-return, promise/prefer-await-to-then
+          promiseResult.then(
+            (resolvedValue) => {
+              promiseStatus = 'resolved';
+              onDone({ type: 'result', result: resolvedValue });
+              return;
+            },
+            (rejectedValue) => {
+              promiseStatus = 'rejected';
+              lastError = rejectedValue;
+              return;
+            },
+          );
+        } else {
+          onDone({ type: 'result', result: result });
+        }
+        // If `callback` throws, wait for the next mutation, interval, or timeout.
+      } catch (error) {
+        // Save the most recent callback error to reject the promise with it in the event of a timeout
+        lastError = error;
+      }
+    }
+
+    function handleTimeout() {
+      let error: Error;
+      if (lastError) {
+        if (lastError instanceof Error) {
+          error = lastError;
+        } else {
+          error = new Error(String(lastError));
+        }
+
+        copyStackTraceIfNeeded(error, stackTraceError);
+      } else {
+        error = new Error('Timed out in waitFor.');
+        copyStackTraceIfNeeded(error, stackTraceError);
+      }
+
+      let errorForRejection: unknown = error;
+      if (typeof onTimeout === 'function') {
+        try {
+          const result = onTimeout(error);
+          if (result) {
+            errorForRejection = result;
+          }
+        } catch (onTimeoutError) {
+          errorForRejection = onTimeoutError;
+        }
+      }
+      onDone({ type: 'error', error: errorForRejection });
+    }
+  });
+}
+
+export function waitFor<T>(expectation: () => T, options?: WaitForOptions): Promise<T> {
+  // Being able to display a useful stack trace requires generating it before doing anything async
+  const stackTraceError = new ErrorWithStack('STACK_TRACE_ERROR', waitFor);
+  const optionsWithStackTrace = { stackTraceError, ...options };
+
+  return wrapAsync(() => waitForInternal(expectation, optionsWithStackTrace));
+}

@@ -1,0 +1,318 @@
+import React from 'react';
+import {
+  Button,
+  Pressable,
+  Switch,
+  Text,
+  TextInput,
+  TouchableHighlight,
+  TouchableNativeFeedback,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+} from 'react-native';
+
+import { render, screen } from '../..';
+
+test('toBeDisabled()/toBeEnabled() supports basic case', async () => {
+  await render(
+    <View>
+      <View testID="disabled-parent" aria-disabled>
+        <View>
+          <View testID="child-of-disabled" />
+        </View>
+      </View>
+      <View>
+        <View testID="enabled-view" />
+        <Text testID="enabled-text">Text</Text>
+        <TextInput testID="enabled-text-input" />
+        <Pressable testID="enabled-pressable" />
+      </View>
+    </View>,
+  );
+
+  expect(screen.getByTestId('disabled-parent')).toBeDisabled();
+  expect(screen.getByTestId('child-of-disabled')).not.toBeDisabled();
+  expect(screen.getByTestId('enabled-view')).not.toBeDisabled();
+  expect(screen.getByTestId('enabled-text')).not.toBeDisabled();
+  expect(screen.getByTestId('enabled-text-input')).not.toBeDisabled();
+  expect(screen.getByTestId('enabled-pressable')).not.toBeDisabled();
+
+  expect(() => expect(screen.getByTestId('disabled-parent')).not.toBeDisabled())
+    .toThrowErrorMatchingInlineSnapshot(`
+    "expect(instance).not.toBeDisabled()
+
+    Received instance is disabled:
+      <View
+        aria-disabled={true}
+        testID="disabled-parent"
+      />"
+  `);
+
+  expect(() => expect(screen.getByTestId('enabled-view')).toBeDisabled())
+    .toThrowErrorMatchingInlineSnapshot(`
+    "expect(instance).toBeDisabled()
+
+    Received instance is not disabled:
+      <View
+        testID="enabled-view"
+      />"
+  `);
+
+  expect(screen.getByTestId('disabled-parent')).not.toBeEnabled();
+  expect(screen.getByTestId('child-of-disabled')).toBeEnabled();
+  expect(screen.getByTestId('enabled-view')).toBeEnabled();
+  expect(screen.getByTestId('enabled-text')).toBeEnabled();
+  expect(screen.getByTestId('enabled-text-input')).toBeEnabled();
+  expect(screen.getByTestId('enabled-pressable')).toBeEnabled();
+
+  expect(() => expect(screen.getByTestId('disabled-parent')).toBeEnabled())
+    .toThrowErrorMatchingInlineSnapshot(`
+    "expect(instance).toBeEnabled()
+
+    Received instance is not enabled:
+      <View
+        aria-disabled={true}
+        testID="disabled-parent"
+      />"
+  `);
+
+  expect(() => expect(screen.getByTestId('enabled-view')).not.toBeEnabled())
+    .toThrowErrorMatchingInlineSnapshot(`
+    "expect(instance).not.toBeEnabled()
+
+    Received instance is enabled:
+      <View
+        testID="enabled-view"
+      />"
+  `);
+});
+
+test('toBeDisabled()/toBeEnabled() supports Pressable with "disabled" prop', async () => {
+  await render(
+    <Pressable disabled testID="subject">
+      <Text>Button</Text>
+    </Pressable>,
+  );
+
+  const pressable = screen.getByTestId('subject');
+  expect(pressable).toBeDisabled();
+  expect(pressable).not.toBeEnabled();
+
+  const title = screen.getByText('Button');
+  expect(title).not.toBeDisabled();
+  expect(title).toBeEnabled();
+
+  expect(() => expect(pressable).toBeEnabled()).toThrowErrorMatchingInlineSnapshot(`
+    "expect(instance).toBeEnabled()
+
+    Received instance is not enabled:
+      <View
+        accessibilityState={
+          {
+            "disabled": true,
+          }
+        }
+        accessible={true}
+        testID="subject"
+      />"
+  `);
+
+  expect(() => expect(pressable).not.toBeDisabled()).toThrowErrorMatchingInlineSnapshot(`
+    "expect(instance).not.toBeDisabled()
+
+    Received instance is disabled:
+      <View
+        accessibilityState={
+          {
+            "disabled": true,
+          }
+        }
+        accessible={true}
+        testID="subject"
+      />"
+  `);
+
+  expect(() => expect(title).toBeDisabled()).toThrowErrorMatchingInlineSnapshot(`
+    "expect(instance).toBeDisabled()
+
+    Received instance is not disabled:
+      <Text>
+        Button
+      </Text>"
+  `);
+
+  expect(() => expect(title).not.toBeEnabled()).toThrowErrorMatchingInlineSnapshot(`
+    "expect(instance).not.toBeEnabled()
+
+    Received instance is enabled:
+      <Text>
+        Button
+      </Text>"
+  `);
+});
+
+test.each([
+  ['Pressable', Pressable],
+  ['TouchableOpacity', TouchableOpacity],
+  ['TouchableHighlight', TouchableHighlight],
+  ['TouchableWithoutFeedback', TouchableWithoutFeedback],
+  ['TouchableNativeFeedback', TouchableNativeFeedback],
+] as const)(
+  'toBeDisabled()/toBeEnabled() supports %s with "disabled" prop',
+  async (_, Component) => {
+    await render(
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore - JSX element type 'Component' does not have any construct or call signatures.
+      <Component disabled testID="subject">
+        {/* `TouchableWithoutFeedback` and `TouchableNativeFeedback` render their child as the host. */}
+        <View>
+          <Text>Button</Text>
+        </View>
+      </Component>,
+    );
+
+    const touchable = screen.getByTestId('subject');
+    expect(touchable).toBeDisabled();
+    expect(touchable).not.toBeEnabled();
+
+    const title = screen.getByText('Button');
+    expect(title).not.toBeDisabled();
+    expect(title).toBeEnabled();
+
+    expect(() => expect(touchable).toBeEnabled()).toThrow();
+    expect(() => expect(touchable).not.toBeDisabled()).toThrow();
+    expect(() => expect(title).toBeDisabled()).toThrow();
+    expect(() => expect(title).not.toBeEnabled()).toThrow();
+  },
+);
+
+test.each([
+  ['View', View],
+  ['Text', Text],
+  ['TextInput', TextInput],
+  ['Pressable', Pressable],
+  ['TouchableOpacity', TouchableOpacity],
+  ['TouchableWithoutFeedback', TouchableWithoutFeedback],
+  ['TouchableNativeFeedback', TouchableNativeFeedback],
+] as const)(
+  'toBeDisabled()/toBeEnabled() supports %s with "aria-disabled" prop',
+  async (_, Component) => {
+    await render(
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore - JSX element type 'Component' does not have any construct or call signatures.
+      <Component testID="subject" aria-disabled>
+        <Text>Hello</Text>
+      </Component>,
+    );
+
+    const view = screen.getByTestId('subject');
+    expect(view).toBeDisabled();
+    expect(view).not.toBeEnabled();
+    expect(() => expect(view).toBeEnabled()).toThrow();
+    expect(() => expect(view).not.toBeDisabled()).toThrow();
+  },
+);
+
+test.each([
+  ['View', View],
+  ['Text', Text],
+  ['TextInput', TextInput],
+  ['Pressable', Pressable],
+  ['TouchableOpacity', TouchableOpacity],
+  ['TouchableHighlight', TouchableHighlight],
+  ['TouchableWithoutFeedback', TouchableWithoutFeedback],
+  ['TouchableNativeFeedback', TouchableNativeFeedback],
+] as const)(
+  'toBeDisabled()/toBeEnabled() supports %s with "accessibilityState.disabled" prop',
+  async (_, Component) => {
+    await render(
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore - JSX element type 'Component' does not have any construct or call signatures.
+      <Component testID="subject" accessibilityState={{ disabled: true }}>
+        <Text>Hello</Text>
+      </Component>,
+    );
+
+    const view = screen.getByTestId('subject');
+    expect(view).toBeDisabled();
+    expect(view).not.toBeEnabled();
+    expect(() => expect(view).toBeEnabled()).toThrow();
+    expect(() => expect(view).not.toBeDisabled()).toThrow();
+  },
+);
+
+test('toBeDisabled()/toBeEnabled() supports "editable" prop on TextInput', async () => {
+  await render(
+    <View>
+      <TextInput testID="enabled-by-default" />
+      <TextInput testID="enabled" editable />
+      <TextInput testID="disabled" editable={false} />
+    </View>,
+  );
+
+  expect(screen.getByTestId('enabled-by-default')).not.toBeDisabled();
+  expect(screen.getByTestId('enabled')).not.toBeDisabled();
+  expect(screen.getByTestId('disabled')).toBeDisabled();
+
+  expect(screen.getByTestId('enabled-by-default')).toBeEnabled();
+  expect(screen.getByTestId('enabled')).toBeEnabled();
+  expect(screen.getByTestId('disabled')).not.toBeEnabled();
+});
+
+test('toBeDisabled()/toBeEnabled() supports "readOnly" prop on TextInput', async () => {
+  await render(
+    <View>
+      <TextInput testID="read-only" readOnly />
+      <TextInput testID="read-only-false" readOnly={false} />
+    </View>,
+  );
+
+  expect(screen.getByTestId('read-only')).toBeDisabled();
+  expect(screen.getByTestId('read-only-false')).toBeEnabled();
+});
+
+test('toBeDisabled()/toBeEnabled() supports "disabled" prop on Switch', async () => {
+  await render(
+    <View>
+      <Switch testID="enabled" />
+      <Switch testID="disabled" disabled />
+    </View>,
+  );
+
+  expect(screen.getByTestId('enabled')).toBeEnabled();
+  expect(screen.getByTestId('disabled')).toBeDisabled();
+});
+
+test('toBeDisabled()/toBeEnabled() does not inherit disabled state from ancestors', async () => {
+  await render(
+    <View>
+      <View aria-disabled>
+        <Pressable testID="in-disabled-view" />
+      </View>
+      <Pressable disabled>
+        <Pressable testID="in-disabled-pressable" />
+      </Pressable>
+    </View>,
+  );
+
+  expect(screen.getByTestId('in-disabled-view')).toBeEnabled();
+  expect(screen.getByTestId('in-disabled-view')).not.toBeDisabled();
+  expect(screen.getByTestId('in-disabled-pressable')).toBeEnabled();
+  expect(screen.getByTestId('in-disabled-pressable')).not.toBeDisabled();
+});
+
+test('toBeDisabled()/toBeEnabled() supports "disabled" prop on Button', async () => {
+  await render(
+    <View>
+      <Button testID="enabled" title="enabled" />
+      <Button testID="disabled" title="disabled" disabled />
+    </View>,
+  );
+
+  expect(screen.getByTestId('enabled')).not.toBeDisabled();
+  expect(screen.getByTestId('disabled')).toBeDisabled();
+
+  expect(screen.getByTestId('enabled')).toBeEnabled();
+  expect(screen.getByTestId('disabled')).not.toBeEnabled();
+});

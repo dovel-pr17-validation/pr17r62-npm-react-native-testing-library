@@ -1,0 +1,166 @@
+import { stringify } from 'jest-matcher-utils';
+import type { TestInstance } from 'test-renderer';
+
+import { buildScrollEvent, nativeState } from '../../events';
+import { ErrorWithStack } from '../../helpers/errors';
+import { isHostScrollView } from '../../helpers/host-component-names';
+import { pick } from '../../helpers/object';
+import type { Point, Size } from '../../types';
+import type { UserEventConfig, UserEventInstance } from '../setup';
+import { Interaction, wait, warnAboutUnhandledInteraction } from '../utils';
+import { createScrollSteps, inertialInterpolator, linearInterpolator } from './utils';
+
+interface CommonScrollToOptions {
+  contentSize?: Size;
+  layoutMeasurement?: Size;
+}
+
+export interface VerticalScrollToOptions extends CommonScrollToOptions {
+  y: number;
+  momentumY?: number;
+
+  // Vertical scroll should not contain horizontal scroll part.
+  x?: never;
+  momentumX?: never;
+}
+
+export interface HorizontalScrollToOptions extends CommonScrollToOptions {
+  x: number;
+  momentumX?: number;
+
+  // Horizontal scroll should not contain vertical scroll part.
+  y?: never;
+  momentumY?: never;
+}
+
+export type ScrollToOptions = VerticalScrollToOptions | HorizontalScrollToOptions;
+
+export async function scrollTo(
+  this: UserEventInstance,
+  instance: TestInstance,
+  options: ScrollToOptions,
+): Promise<void> {
+  if (!isHostScrollView(instance)) {
+    throw new ErrorWithStack(
+      `scrollTo() works only with host "ScrollView" instances. Passed instance has type "${instance.type}".`,
+      scrollTo,
+    );
+  }
+
+  ensureScrollViewDirection(instance, options);
+  const interaction = new Interaction('scrollTo', instance);
+
+  const eventOptions: ScrollToOptions = {
+    ...options,
+    layoutMeasurement: options.layoutMeasurement ?? nativeState.layoutSizeForInstance.get(instance),
+  };
+
+  await interaction.dispatchEvent(
+    'contentSizeChange',
+    options.contentSize?.width ?? 0,
+    options.contentSize?.height ?? 0,
+  );
+
+  const initialOffset = nativeState.contentOffsetForInstance.get(instance) ?? {
+    x: 0,
+    y: 0,
+  };
+  const dragSteps = createScrollSteps(
+    { y: options.y, x: options.x },
+    initialOffset,
+    linearInterpolator,
+  );
+  await emitDragScrollEvents(this.config, interaction, dragSteps, eventOptions);
+
+  const momentumStart = dragSteps.at(-1) ?? initialOffset;
+  const momentumSteps = createScrollSteps(
+    { y: options.momentumY, x: options.momentumX },
+    momentumStart,
+    inertialInterpolator,
+  );
+  await emitMomentumScrollEvents(this.config, interaction, momentumSteps, eventOptions);
+
+  const finalOffset = momentumSteps.at(-1) ?? dragSteps.at(-1) ?? initialOffset;
+  nativeState.contentOffsetForInstance.set(instance, finalOffset);
+  interaction.hasUpdatedNativeState = true;
+
+  warnAboutUnhandledInteraction(interaction);
+}
+
+async function emitDragScrollEvents(
+  config: UserEventConfig,
+  interaction: Interaction,
+  scrollSteps: Point[],
+  scrollOptions: ScrollToOptions,
+) {
+  if (scrollSteps.length === 0) {
+    return;
+  }
+
+  await wait(config);
+  await interaction.dispatchEvent(
+    'scrollBeginDrag',
+    buildScrollEvent(scrollSteps[0], scrollOptions),
+  );
+
+  // Native emits `scroll` for every drag step, including the last; `scrollEndDrag` repeats its offset.
+  for (let i = 1; i < scrollSteps.length; i += 1) {
+    await wait(config);
+    await interaction.dispatchEvent('scroll', buildScrollEvent(scrollSteps[i], scrollOptions));
+  }
+
+  await wait(config);
+  const lastStep = scrollSteps.at(-1);
+  await interaction.dispatchEvent('scrollEndDrag', buildScrollEvent(lastStep, scrollOptions));
+}
+
+async function emitMomentumScrollEvents(
+  config: UserEventConfig,
+  interaction: Interaction,
+  scrollSteps: Point[],
+  scrollOptions: ScrollToOptions,
+) {
+  if (scrollSteps.length === 0) {
+    return;
+  }
+
+  await wait(config);
+  await interaction.dispatchEvent(
+    'momentumScrollBegin',
+    buildScrollEvent(scrollSteps[0], scrollOptions),
+  );
+
+  // Native emits `scroll` for every momentum step, including the last; `momentumScrollEnd` repeats its offset.
+  for (let i = 1; i < scrollSteps.length; i += 1) {
+    await wait(config);
+    await interaction.dispatchEvent('scroll', buildScrollEvent(scrollSteps[i], scrollOptions));
+  }
+
+  await wait(config);
+  const lastStep = scrollSteps.at(-1);
+  await interaction.dispatchEvent('momentumScrollEnd', buildScrollEvent(lastStep, scrollOptions));
+}
+
+function ensureScrollViewDirection(instance: TestInstance, options: ScrollToOptions) {
+  const isVerticalScrollView = instance.props.horizontal !== true;
+
+  const hasHorizontalScrollOptions = options.x !== undefined || options.momentumX !== undefined;
+  if (isVerticalScrollView && hasHorizontalScrollOptions) {
+    throw new ErrorWithStack(
+      `scrollTo() expected only vertical scroll options: "y" and "momentumY" for vertical "ScrollView" element but received ${stringify(
+        pick(options, ['x', 'momentumX']),
+      )}`,
+      scrollTo,
+    );
+  }
+
+  const hasVerticalScrollOptions = options.y !== undefined || options.momentumY !== undefined;
+  if (!isVerticalScrollView && hasVerticalScrollOptions) {
+    throw new ErrorWithStack(
+      `scrollTo() expected only horizontal scroll options: "x" and "momentumX" for horizontal "ScrollView" element but received ${stringify(
+        pick(options, ['y', 'momentumY']),
+      )}`,
+      scrollTo,
+    );
+  }
+}

@@ -1,0 +1,159 @@
+# Changelog
+
+All notable changes to React Native Testing Library will be documented in this file, starting
+with v14.
+
+## Unreleased
+
+### Bug fixes
+
+- `toBeDisabled()` and `toBeEnabled()` incorrectly reported an element as disabled when one of
+  its ancestors was disabled. This is not how React Native works: it doesn't pass the disabled
+  state down to children, so a `Pressable` inside a disabled `View` or `Pressable` still responds
+  to presses and isn't reported as disabled to assistive technologies. The matchers now check
+  only the element's own props, as the `disabled` option of `*ByRole` queries already did.
+  Assert on the element that has the state, e.g. the button instead of the text inside it.
+- A `TextInput` with `readOnly` is treated as non-editable, as React Native does: `fireEvent`
+  and `userEvent` don't change its text, and `toBeDisabled()` and `*ByRole` queries with
+  `disabled: true` match it. `readOnly` wins over `editable`.
+- `toBeDisabled()` and `*ByRole` queries with `disabled: true` match a `Switch` with `disabled` on
+  iOS.
+- `toBeDisabled()` and `*ByRole` queries prefer `disabled` over `aria-disabled` and
+  `accessibilityState.disabled` on `Text`, as React Native does. A `Text` with
+  `disabled={false}` and `aria-disabled` is enabled.
+- `fireEvent` delivers raw touch events (`touchStart`, `touchMove`, `touchEnd`, `touchCancel`)
+  to a handler even when the nearest touch responder declines the touch, as a device does. Before,
+  a child with `onStartShouldSetResponder` returning `false` stopped these events from reaching
+  the `onTouchStart` of its ancestors. Responder-driven events like `press` still respect the
+  responder.
+
+## 14.1.0
+
+### Features
+
+- Added `fireEvent.layout()` to simulate the layout engine measuring an element, invoking the
+  `onLayout` handler with a synthetic layout event. Unlike `fireEvent(element, 'layout')`, it
+  does not bubble to parent elements.
+- `fireEvent.scroll()` and `userEvent.scrollTo()` use the size from the last layout event on the
+  same `ScrollView` as the default `layoutMeasurement`.
+- Added `userEvent.accessibilityAction()` to dispatch a named accessibility action to an
+  element, invoking its `onAccessibilityAction` handler.
+- Added `userEvent.pullToRefresh()` to simulate the pull-to-refresh gesture on a host
+  `ScrollView` element, invoking the `onRefresh` handler of its `refreshControl` prop.
+- Added the `eventDiagnostics` configuration option. When enabled, `fireEvent` and `userEvent`
+  log a warning when no handler is called, e.g. because the target is disabled, blocked by
+  `pointerEvents`, or has no handler for the event. Off by default. See the
+  [configuration docs](./website/docs/14.x/docs/api/misc/config.mdx#eventdiagnostics-option).
+- Added support for React 19.3 (with `test-renderer@1.3`) and React Native 0.88.
+
+### Bug fixes
+
+- `userEvent.scrollTo()` emits a `scroll` event for the last step of a drag scroll, matching
+  native behavior, and no longer emits `scroll` events when the scroll offset does not change.
+- Fixed the `setImmediate` fallback in environments without it (e.g. jsdom) picking up Jest
+  fake timers, which could make async utilities hang.
+
+### Deprecations
+
+- `fireEvent` warns when a direct event bubbles from a nested element to the host element that
+  emits it, e.g. `scroll` from `ScrollView` content to the `ScrollView`. These events will stop
+  bubbling in the next major version. See the
+  [`fireEvent` docs](./website/docs/14.x/docs/api/events/fire-event.mdx) for the list of direct
+  events.
+
+## 14.0.1
+
+### Bug fixes
+
+- `waitFor` cleans up its timers when an error is thrown while printing the `onTimeout`
+  output.
+- `userEvent.type()`, `userEvent.clear()`, and `userEvent.paste()` include `selection` in the
+  `TextInput` `change` event.
+
+## 14.0.0
+
+### Migration guide
+
+See the [Migration to 14.x](./website/docs/14.x/docs/start/migration-v14.mdx) guide for
+step-by-step upgrade instructions, codemods, and before/after examples.
+
+### Breaking changes
+
+- Dropped support for React 18. React 19.0.0 or newer is now required.
+- Raised the minimum supported React Native version to 0.78.
+- Raised the minimum supported Node.js version to `^22.13.0 || >=24`.
+- Replaced the deprecated React Test Renderer with
+  [Test Renderer](https://github.com/mdjastrzebski/test-renderer).
+- Added a peer dependency on Test Renderer 1.x. Install the Test Renderer compatibility line
+  that matches your React 19 minor version.
+- Made the core rendering and event APIs async by default:
+  - `render()` now returns `Promise<RenderResult>`.
+  - `renderHook()` now returns `Promise<RenderHookResult>`.
+  - `fireEvent()` and its helpers now return `Promise<void>`.
+  - `act()` now always returns a Promise and should always be awaited.
+- Removed the `renderAsync`, `renderHookAsync`, and `fireEventAsync` APIs. Use `render`,
+  `renderHook`, and `fireEvent` instead.
+- Removed the `update` alias. Use `rerender` instead.
+- Removed the `getQueriesForElement` alias. Use `within` instead.
+- Removed `UNSAFE_root`. Use `container` for the pseudo-element container or `root` for
+  the first rendered host element.
+- Removed legacy `UNSAFE_*` queries:
+  - `UNSAFE_getAllByType`
+  - `UNSAFE_getByType`
+  - `UNSAFE_getAllByProps`
+  - `UNSAFE_getByProps`
+- Removed the `concurrentRoot` render and configuration option. Concurrent rendering is
+  always enabled in v14.
+- Removed the `createNodeMock` render option, which is not supported by the new Test Renderer
+  integration.
+- Removed the `unstable_validateStringsRenderedWithinText` render option. Text string
+  validation is now always enabled.
+
+### Notable changes
+
+- Reintroduced the `container` API as a safe pseudo-element container, aligned with React
+  Testing Library semantics.
+- Query results and the rendered element tree now expose host elements only. Composite
+  components are no longer visible through the test tree.
+- Type definitions now use `TestInstance` from Test Renderer instead of
+  `ReactTestInstance` from React Test Renderer.
+- Suspended or hidden instances are now represented with React Native-like hidden props, such
+  as `display: 'none'`, so visibility queries and matchers behave closer to runtime behavior.
+- `fireEvent.press()` and `fireEvent.scroll()` now pass default synthetic native event objects
+  to handlers and deep-merge any event props supplied by the test.
+- Accessible name calculation now follows React Native inputs more closely, including
+  `TextInput` placeholder handling, child accessible name concatenation, and stricter
+  `getByRole(..., { name })` matching.
+- `configure`, `render`, `renderHook`, and `userEvent.setup` now warn when unknown options are
+  passed, helping catch stale or misspelled options during migration.
+- Text strings rendered outside of React Native `<Text>` components now throw, matching
+  React Native runtime behavior.
+
+### Test Renderer versions
+
+Install the Test Renderer version that matches your React 19 minor version:
+
+| React version | Recommended Test Renderer version |
+| ------------- | --------------------------------- |
+| `19.2`        | `test-renderer@1.2`               |
+| `19.1`        | `test-renderer@1.1`               |
+| `19.0`        | `test-renderer@1.0`               |
+
+Older Test Renderer lines may not support newer React 19 features in tests. Newer Test
+Renderer lines can produce peer dependency warnings, or an install error with `npm`. See the
+[Test Renderer React 19 compatibility lines](https://github.com/mdjastrzebski/test-renderer#react-19-compatibility-lines)
+for the latest recommendations.
+
+### Codemods
+
+Two codemods are available to automate the most common v14 upgrade work:
+
+- `rntl-v14-update-deps` updates dependencies by removing React Test Renderer packages,
+  adding Test Renderer, and updating React Native Testing Library.
+- `rntl-v14-async-functions` updates test code for async `render`, `renderHook`, `fireEvent`,
+  `act`, `rerender`, and `unmount` usage.
+
+### Full changelog
+
+See the full GitHub comparison:
+https://github.com/callstack/react-native-testing-library/compare/v13.3.3...v14.0.0

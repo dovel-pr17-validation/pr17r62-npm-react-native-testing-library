@@ -1,0 +1,268 @@
+import * as React from 'react';
+import type { ScrollViewProps } from 'react-native';
+import { ScrollView, View } from 'react-native';
+
+import { userEvent } from '../..';
+import { fireEvent, render, screen } from '../../..';
+import type { EventEntry } from '../../../test-utils/events';
+import { createEventLogger } from '../../../test-utils/events';
+
+function mapEventsToShortForm(events: EventEntry[]) {
+  return events.map((e) => [
+    e.name,
+    e.payload.nativeEvent.contentOffset.y,
+    e.payload.nativeEvent.contentOffset.x,
+  ]);
+}
+
+async function renderScrollViewWithToolkit(props: ScrollViewProps = {}) {
+  const { events, logEvent } = createEventLogger();
+
+  await render(
+    <ScrollView
+      testID="scrollView"
+      onScroll={logEvent('scroll')}
+      onScrollBeginDrag={logEvent('scrollBeginDrag')}
+      onScrollEndDrag={logEvent('scrollEndDrag')}
+      onMomentumScrollBegin={logEvent('momentumScrollBegin')}
+      onMomentumScrollEnd={logEvent('momentumScrollEnd')}
+      onScrollToTop={logEvent('scrollToTop')}
+      {...props}
+    />,
+  );
+
+  return { events };
+}
+
+beforeEach(() => {
+  jest.useRealTimers();
+});
+
+describe('scrollTo()', () => {
+  it('supports vertical drag scroll', async () => {
+    const { events } = await renderScrollViewWithToolkit();
+    const user = userEvent.setup();
+
+    await user.scrollTo(screen.getByTestId('scrollView'), { y: 100 });
+    expect(mapEventsToShortForm(events)).toEqual([
+      ['scrollBeginDrag', 0, 0],
+      ['scroll', 25, 0],
+      ['scroll', 50, 0],
+      ['scroll', 75, 0],
+      ['scroll', 100, 0],
+      ['scrollEndDrag', 100, 0],
+    ]);
+    expect(events).toMatchSnapshot('scrollTo({ y: 100 })');
+  });
+
+  it('supports horizontal drag scroll', async () => {
+    const { events } = await renderScrollViewWithToolkit({ horizontal: true });
+    const user = userEvent.setup();
+
+    await user.scrollTo(screen.getByTestId('scrollView'), { x: 100 });
+    expect(mapEventsToShortForm(events)).toEqual([
+      ['scrollBeginDrag', 0, 0],
+      ['scroll', 0, 25],
+      ['scroll', 0, 50],
+      ['scroll', 0, 75],
+      ['scroll', 0, 100],
+      ['scrollEndDrag', 0, 100],
+    ]);
+  });
+
+  it('supports vertical momentum scroll', async () => {
+    const { events } = await renderScrollViewWithToolkit();
+    const user = userEvent.setup();
+
+    await user.scrollTo(screen.getByTestId('scrollView'), {
+      y: 100,
+      momentumY: 120,
+    });
+    expect(mapEventsToShortForm(events)).toEqual([
+      ['scrollBeginDrag', 0, 0],
+      ['scroll', 25, 0],
+      ['scroll', 50, 0],
+      ['scroll', 75, 0],
+      ['scroll', 100, 0],
+      ['scrollEndDrag', 100, 0],
+      ['momentumScrollBegin', 100, 0],
+      ['scroll', 110, 0],
+      ['scroll', 115, 0],
+      ['scroll', 117.5, 0],
+      ['scroll', 120, 0],
+      ['momentumScrollEnd', 120, 0],
+    ]);
+  });
+
+  test('works with fake timers', async () => {
+    jest.useFakeTimers();
+    const { events } = await renderScrollViewWithToolkit();
+    const user = userEvent.setup();
+
+    await user.scrollTo(screen.getByTestId('scrollView'), { y: 100 });
+    expect(mapEventsToShortForm(events)).toEqual([
+      ['scrollBeginDrag', 0, 0],
+      ['scroll', 25, 0],
+      ['scroll', 50, 0],
+      ['scroll', 75, 0],
+      ['scroll', 100, 0],
+      ['scrollEndDrag', 100, 0],
+    ]);
+  });
+
+  test('remembers previous scroll offset', async () => {
+    const { events } = await renderScrollViewWithToolkit();
+    const user = userEvent.setup();
+
+    await user.scrollTo(screen.getByTestId('scrollView'), { y: 100 });
+    await user.scrollTo(screen.getByTestId('scrollView'), { y: 200 });
+    expect(mapEventsToShortForm(events)).toEqual([
+      ['scrollBeginDrag', 0, 0],
+      ['scroll', 25, 0],
+      ['scroll', 50, 0],
+      ['scroll', 75, 0],
+      ['scroll', 100, 0],
+      ['scrollEndDrag', 100, 0],
+      ['scrollBeginDrag', 100, 0],
+      ['scroll', 125, 0],
+      ['scroll', 150, 0],
+      ['scroll', 175, 0],
+      ['scroll', 200, 0],
+      ['scrollEndDrag', 200, 0],
+    ]);
+  });
+
+  test('remembers previous scroll offset from "fireEvent.scroll"', async () => {
+    const { events } = await renderScrollViewWithToolkit();
+    const user = userEvent.setup();
+
+    await fireEvent.scroll(screen.getByTestId('scrollView'), {
+      nativeEvent: { contentOffset: { y: 100 } },
+    });
+    await user.scrollTo(screen.getByTestId('scrollView'), { y: 200 });
+    expect(mapEventsToShortForm(events)).toEqual([
+      ['scroll', 100, 0],
+      ['scrollBeginDrag', 100, 0],
+      ['scroll', 125, 0],
+      ['scroll', 150, 0],
+      ['scroll', 175, 0],
+      ['scroll', 200, 0],
+      ['scrollEndDrag', 200, 0],
+    ]);
+  });
+
+  it('validates vertical scroll direction', async () => {
+    await renderScrollViewWithToolkit();
+    const user = userEvent.setup();
+
+    await expect(() =>
+      user.scrollTo(screen.getByTestId('scrollView'), { x: 100 }),
+    ).rejects.toThrowErrorMatchingInlineSnapshot(
+      `"scrollTo() expected only vertical scroll options: "y" and "momentumY" for vertical "ScrollView" element but received {"x": 100}"`,
+    );
+  });
+
+  it('validates horizontal scroll direction', async () => {
+    await renderScrollViewWithToolkit({ horizontal: true });
+    const user = userEvent.setup();
+
+    await expect(() =>
+      user.scrollTo(screen.getByTestId('scrollView'), { y: 100 }),
+    ).rejects.toThrowErrorMatchingInlineSnapshot(
+      `"scrollTo() expected only horizontal scroll options: "x" and "momentumX" for horizontal "ScrollView" element but received {"y": 100}"`,
+    );
+  });
+
+  it('generates single drag step if already at target offset', async () => {
+    const { events } = await renderScrollViewWithToolkit();
+    const user = userEvent.setup();
+
+    await user.scrollTo(screen.getByTestId('scrollView'), { y: 0 });
+    expect(mapEventsToShortForm(events)).toEqual([
+      ['scrollBeginDrag', 0, 0],
+      ['scrollEndDrag', 0, 0],
+    ]);
+  });
+
+  it('generates single momentum step if already at target offset', async () => {
+    const { events } = await renderScrollViewWithToolkit();
+    const user = userEvent.setup();
+
+    await user.scrollTo(screen.getByTestId('scrollView'), {
+      y: 100,
+      momentumY: 100,
+    });
+    expect(mapEventsToShortForm(events)).toEqual([
+      ['scrollBeginDrag', 0, 0],
+      ['scroll', 25, 0],
+      ['scroll', 50, 0],
+      ['scroll', 75, 0],
+      ['scroll', 100, 0],
+      ['scrollEndDrag', 100, 0],
+      ['momentumScrollBegin', 100, 0],
+      ['momentumScrollEnd', 100, 0],
+    ]);
+  });
+
+  it('generates no steps for scroll without offset', async () => {
+    const { events } = await renderScrollViewWithToolkit();
+    const user = userEvent.setup();
+
+    // @ts-expect-error intentionally omitting required options
+    await user.scrollTo(screen.getByTestId('scrollView'), {});
+    expect(mapEventsToShortForm(events)).toEqual([]);
+  });
+
+  it('does NOT work on View', async () => {
+    await render(<View testID="view" />);
+    const user = userEvent.setup();
+
+    await expect(
+      user.scrollTo(screen.getByTestId('view'), { y: 20 }),
+    ).rejects.toThrowErrorMatchingInlineSnapshot(
+      `"scrollTo() works only with host "ScrollView" instances. Passed instance has type "View"."`,
+    );
+  });
+
+  test('uses layout size from previous layout event as layoutMeasurement', async () => {
+    const { events } = await renderScrollViewWithToolkit({ onLayout: () => {} });
+    const user = userEvent.setup();
+    const scrollView = screen.getByTestId('scrollView');
+
+    await fireEvent.layout(scrollView, { width: 390, height: 750 });
+    await user.scrollTo(scrollView, { y: 100 });
+
+    expect(events.length).toBeGreaterThan(0);
+    for (const event of events) {
+      expect(event.payload.nativeEvent.layoutMeasurement).toEqual({ width: 390, height: 750 });
+    }
+  });
+
+  test('prefers layoutMeasurement option over layout size from layout event', async () => {
+    const { events } = await renderScrollViewWithToolkit({ onLayout: () => {} });
+    const user = userEvent.setup();
+    const scrollView = screen.getByTestId('scrollView');
+
+    await fireEvent.layout(scrollView, { width: 390, height: 750 });
+    await user.scrollTo(scrollView, { y: 100, layoutMeasurement: { width: 100, height: 200 } });
+
+    expect(events.length).toBeGreaterThan(0);
+    for (const event of events) {
+      expect(event.payload.nativeEvent.layoutMeasurement).toEqual({ width: 100, height: 200 });
+    }
+  });
+
+  test('is accessible directly in userEvent', async () => {
+    const { events } = await renderScrollViewWithToolkit();
+
+    await userEvent.scrollTo(screen.getByTestId('scrollView'), { y: 100 });
+    expect(mapEventsToShortForm(events)).toEqual([
+      ['scrollBeginDrag', 0, 0],
+      ['scroll', 25, 0],
+      ['scroll', 50, 0],
+      ['scroll', 75, 0],
+      ['scroll', 100, 0],
+      ['scrollEndDrag', 100, 0],
+    ]);
+  });
+});

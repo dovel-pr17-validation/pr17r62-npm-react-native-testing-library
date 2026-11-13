@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "jsx": "react",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "declaration": true,
+    "noEmit": true,
+    "rootDir": "src",
+    "types": ["jest", "node"],
+    "outDir": "dist"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/__tests__/react-19_2/**/*"]
+}

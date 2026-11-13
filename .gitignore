@@ -1,0 +1,31 @@
+# General Node.js
+node_modules
+coverage
+*.log
+.eslintcache
+*.tsbuildinfo
+build
+dist
+.idea
+.DS_Store
+
+# Yarn 4.x
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+**/.yarn/install-state.gz
+
+# Docusaurus
+.docusaurus
+
+
+codemods/**/dist/
+
+# AI assistant skills (3rd party, fetched on demand)
+.agents/skills/
+.claude/skills/
+.cursor/skills/

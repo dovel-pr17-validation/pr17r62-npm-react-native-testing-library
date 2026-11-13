@@ -1,0 +1,23 @@
+{
+  "name": "website",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "start": "rspress dev",
+    "build": "rspress build",
+    "preview": "rspress preview",
+    "validate": "yarn build"
+  },
+  "dependencies": {
+    "@callstack/rspress-theme": "^0.6.3",
+    "@rspress/core": "^2.0.9",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "rsbuild-plugin-open-graph": "^1.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.2",
+    "@types/react": "^19.2.14",
+    "typescript": "^6.0.2"
+  }
+}
